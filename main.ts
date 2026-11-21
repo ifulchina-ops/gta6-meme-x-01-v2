@@ -1,55 +1,84 @@
-// gta6-meme-x-01 entry, round 3 (Node 22, standard library only).
+// gta6-meme-x-01, round 3: "Vice City Arrivals" (Node 22, stdlib only).
 //
-// The entry is the X post itself: a GTA 6 meme made by this agent — the
-// "Vice City Arrivals" airport board — posted from the public account
-// @eleenskie969 with make.fun (a link and a tag of @makefunai) and the
-// account's play code in its text. The meme is a flat document joke: an
-// arrivals board where GTA V departed in 2013, GTA VI is delayed in 2025
-// and 2026, the 2027 flight is "NOW BOARDING*" (*not really), and the one
-// line that is ON TIME is your AI agent's payout — the make.fun ghost
-// flips a tile that says PAID. The punchline, in big type under the board:
-// flight GTA6 delayed thirteen years, your agent's payout arrived.
-// POST.json at the repository root names the post's address. All this
-// program has to do is hand that address to the gate: read POST.json,
-// check it is an X post address, and copy it to the output directory.
-// Nothing written here is judged — the house reads the post from X itself.
+// The judged artifact is the X post, not this program: a GTA 6 meme — an
+// airport arrivals board where every GTA VI flight is DELAYED and the only
+// row ON TIME is your AI agent's payout — posted from @eleenskie969 with
+// the make.fun link, the @makefunai tag, and the account's play code.
+// POST.json at the repo root holds the post's address. This program's only
+// job is to deliver that address to the gate: load POST.json, confirm the
+// address is an X status URL, and place a copy in the output directory.
+// The house fetches the post from X itself; nothing here is scored.
 //
-// Run it outside the grader's container with:
+// Local run:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? "/bot";
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-
-// An X post address: https://x.com/<handle>/status/<digits>
-// (twitter.com, www. and mobile. forms read the same).
-const POST_URL = /^https:\/\/(www\.|mobile\.)?(x\.com|twitter\.com)\/[^/]+\/status\/\d+$/;
-
-const postPath = join(BOT_DIR, "POST.json");
-let post: { url?: unknown };
-try {
-  post = JSON.parse(readFileSync(postPath, "utf8")) as { url?: unknown };
-} catch (err) {
-  console.error(`POST.json could not be read from ${BOT_DIR}: ${(err as Error).message}`);
-  process.exit(1);
+// Read an env var, falling back when it is unset or blank.
+function envOr(name: string, fallback: string): string {
+  const value = process.env[name];
+  return value !== undefined && value !== "" ? value : fallback;
 }
 
-if (typeof post.url !== "string" || !POST_URL.test(post.url)) {
-  console.error(
-    `POST.json must name an X post URL (https://x.com/<handle>/status/<id>), got: ${JSON.stringify(post.url)}`,
-  );
-  process.exit(1);
+const botRoot = envOr("MAKEFUN_BOT_DIR", "/bot");
+const outRoot = envOr("MAKEFUN_OUTPUT_DIR", "/output");
+
+// An X status address: https://x.com/<handle>/status/<digits>.
+// twitter.com and the www./mobile. hosts are the same post.
+const X_STATUS_URL =
+  /^https:\/\/(www\.|mobile\.)?(x\.com|twitter\.com)\/[^/]+\/status\/\d+$/;
+
+// Load POST.json from the bot root and return the post address it names.
+// Throws a plain Error describing what went wrong.
+function loadPostAddress(root: string): string {
+  const path = join(root, "POST.json");
+  let record: unknown;
+  try {
+    record = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    throw new Error(`cannot read ${path}: ${(err as Error).message}`);
+  }
+  const url = (record as { url?: unknown }).url;
+  if (typeof url !== "string" || !X_STATUS_URL.test(url)) {
+    throw new Error(
+      `POST.json must name an X post URL (https://x.com/<handle>/status/<id>), got ${JSON.stringify(url)}`,
+    );
+  }
+  return url;
 }
 
-mkdirSync(OUTPUT_DIR, { recursive: true });
-try {
-  copyFileSync(postPath, join(OUTPUT_DIR, "POST.json"));
-} catch (err) {
-  console.error(`POST.json could not be copied to ${OUTPUT_DIR}: ${(err as Error).message}`);
-  process.exit(1);
+// Copy POST.json into the output directory, creating it first, then
+// re-read the delivered copy and confirm it still names the same post.
+function shipPost(root: string, destination: string, expected: string): string {
+  const source = join(root, "POST.json");
+  const target = join(destination, "POST.json");
+  mkdirSync(destination, { recursive: true });
+  copyFileSync(source, target);
+  const delivered = JSON.parse(readFileSync(target, "utf8")) as { url?: unknown };
+  if (delivered.url !== expected) {
+    throw new Error(`delivered POST.json at ${target} does not name ${expected}`);
+  }
+  return target;
 }
 
-console.log(`POST.json -> ${join(OUTPUT_DIR, "POST.json")}: ${post.url}`);
-console.log(`POST.json bytes: ${statSync(postPath).size}; meme: meme.png (round 3, Vice City Arrivals)`);
+function main(): void {
+  let address: string;
+  try {
+    address = loadPostAddress(botRoot);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+  let target: string;
+  try {
+    target = shipPost(botRoot, outRoot, address);
+  } catch (err) {
+    console.error(`cannot copy POST.json to ${outRoot}: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  console.log(`POST.json -> ${target}`);
+  console.log(`post: ${address} (round 3, Vice City Arrivals)`);
+}
+
+main();
